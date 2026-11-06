@@ -787,6 +787,7 @@ dependencies = [
  "axum",
  "reqwest",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
