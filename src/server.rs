@@ -16,9 +16,7 @@ use rmcp::{
     },
 };
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
+use serde::Serialize;
 use std::sync::Arc;
 
 use crate::processors::classifier::ClassificationBackend;
@@ -28,6 +26,11 @@ use crate::tools::classification::{
     ClassificationTool,
 };
 
+use crate::tools::age_detection::{
+    AgeDetectionBackend,
+    AgeDetectionTool,
+};
+
 // ==========================================
 // MCP SERVER
 // ==========================================
@@ -35,12 +38,14 @@ use crate::tools::classification::{
 #[derive(Clone)]
 pub struct ImageAnalysisServer {
 
-    // Shared inference backend.
-    // None until an inference engine is initialized.
-    backend: Option<Arc<dyn ClassificationBackend>>,
+    // Classification model
+    classification_backend: Option<Arc<dyn ClassificationBackend>>,
 
-    // Model class labels.
-    labels: Vec<String>,
+    // Age detection model
+    age_detection_backend: Option<Arc<dyn AgeDetectionBackend>>,
+
+    // Classification labels
+    classification_labels: Vec<String>,
 }
 
 // ==========================================
@@ -51,19 +56,30 @@ impl ImageAnalysisServer {
 
     pub fn new() -> Self {
         Self {
-            backend: None,
-            labels: Vec::new(),
+            classification_backend: None,
+            age_detection_backend: None,
+            classification_labels: Vec::new(),
         }
     }
 
-    // Configure inference backend later.
-    pub fn with_backend(
+    // Configure classification model
+    pub fn with_classification_backend(
         mut self,
         backend: Arc<dyn ClassificationBackend>,
         labels: Vec<String>,
     ) -> Self {
-        self.backend = Some(backend);
-        self.labels = labels;
+        self.classification_backend = Some(backend);
+        self.classification_labels = labels;
+
+        self
+    }
+
+    // Configure age detection model
+    pub fn with_age_detection_backend(
+        mut self,
+        backend: Arc<dyn AgeDetectionBackend>,
+    ) -> Self {
+        self.age_detection_backend = Some(backend);
 
         self
     }
@@ -76,8 +92,12 @@ impl ImageAnalysisServer {
 #[tool_router(server_handler)]
 impl ImageAnalysisServer {
 
+    // ======================================
+    // IMAGE CLASSIFICATION
+    // ======================================
+
     #[tool(
-        description = "Classify an image using the configured image classification model. Accepts a Base64-encoded JPEG, PNG or WebP image and returns the top three predictions with probabilities."
+        description = "Classify an image using the configured classification model. Accepts a Base64-encoded JPEG, PNG or WebP image and returns the top three predictions."
     )]
     fn classify_image(
         &self,
@@ -86,8 +106,29 @@ impl ImageAnalysisServer {
 
         let response = ClassificationTool::classify(
             &params.image_base64,
-            self.backend.as_ref(),
-            &self.labels,
+            self.classification_backend.as_ref(),
+            &self.classification_labels,
+        )?;
+
+        serde_json::to_string_pretty(&response)
+            .map_err(|e| e.to_string())
+    }
+
+    // ======================================
+    // AGE DETECTION
+    // ======================================
+
+    #[tool(
+        description = "Estimate the apparent age in years from a Base64-encoded JPEG, PNG or WebP image containing a visible face. Returns estimated age and optional model confidence."
+    )]
+    fn detect_age(
+        &self,
+        Parameters(params): Parameters<ClassificationParams>,
+    ) -> Result<String, String> {
+
+        let response = AgeDetectionTool::detect(
+            &params.image_base64,
+            self.age_detection_backend.as_ref(),
         )?;
 
         serde_json::to_string_pretty(&response)
@@ -112,6 +153,7 @@ struct ServerInfo {
     description: &'static str,
     transport: &'static str,
     endpoints: Endpoints,
+    tools: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -142,6 +184,11 @@ async fn root() -> Json<ServerInfo> {
             health: "/health",
             mcp: "/mcp",
         },
+
+        tools: vec![
+            "classify_image",
+            "detect_age",
+        ],
     })
 }
 
@@ -151,26 +198,22 @@ async fn root() -> Json<ServerInfo> {
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-    // Create MCP server
     let mcp_service = StreamableHttpService::new(
         || Ok(ImageAnalysisServer::new()),
         LocalSessionManager::default().into(),
         StreamableHttpServerConfig::default(),
     );
 
-    // Configure Axum
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
         .nest_service("/mcp", mcp_service);
 
-    // Configure port
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string());
 
     let address = format!("0.0.0.0:{}", port);
 
-    // Start HTTP listener
     let listener = tokio::net::TcpListener::bind(&address).await?;
 
     println!("========================================");
@@ -179,7 +222,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!(" Server:       http://localhost:{}", port);
     println!(" Health:       http://localhost:{}/health", port);
     println!(" MCP:          http://localhost:{}/mcp", port);
-    println!(" MCP Tools:    classify_image");
+    println!(" MCP Tools:");
+    println!("  1. classify_image");
+    println!("  2. detect_age");
     println!("========================================");
 
     axum::serve(listener, app).await?;
