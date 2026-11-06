@@ -1,4 +1,3 @@
-
 mod server;
 
 #[tokio::main]

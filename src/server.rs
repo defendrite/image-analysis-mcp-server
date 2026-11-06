@@ -1,18 +1,10 @@
-
-use axum::{
-    Json,
-    Router,
-    routing::get,
-};
+use axum::{Json, Router, routing::get};
 
 use rmcp::{
     handler::server::wrapper::Parameters,
-    tool,
-    tool_router,
+    tool, tool_router,
     transport::streamable_http_server::{
-        StreamableHttpServerConfig,
-        StreamableHttpService,
-        session::local::LocalSessionManager,
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
 };
 
@@ -33,18 +25,10 @@ pub struct HelloParams {
 
 #[tool_router(server_handler)]
 impl ImageAnalysisServer {
-
     #[tool(description = "Say hello to a user")]
-    fn say_hello(
-        &self,
-        Parameters(HelloParams { name }): Parameters<HelloParams>,
-    ) -> String {
-        format!(
-            "Hello, {}! Welcome to Image Analysis MCP Server.",
-            name
-        )
+    fn say_hello(&self, Parameters(HelloParams { name }): Parameters<HelloParams>) -> String {
+        format!("Hello, {}! Welcome to Image Analysis MCP Server.", name)
     }
-
 }
 
 // ==========================================
@@ -102,7 +86,6 @@ async fn root() -> Json<ServerInfo> {
 // ==========================================
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
     // Configure MCP service
     let mcp_service = StreamableHttpService::new(
         || Ok(ImageAnalysisServer),
@@ -117,8 +100,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .nest_service("/mcp", mcp_service);
 
     // Read port from environment
-    let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "8080".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
 
     let address = format!("0.0.0.0:{}", port);
 
