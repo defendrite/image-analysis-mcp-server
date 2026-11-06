@@ -50,15 +50,15 @@ impl Default for ClassifierConfig {
 // ==========================================
 // CLASSIFICATION RESULT
 // ==========================================
-
-#[derive(Debug, Clone)]
+use serde::Serialize;
+#[derive(Debug, Clone, Serialize)]
 pub struct Prediction {
     pub class_index: usize,
     pub label: String,
     pub probability: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ClassificationResult {
     pub predictions: Vec<Prediction>,
 }
@@ -72,6 +72,18 @@ pub struct Classifier<B: ClassificationBackend> {
     processor: ImageProcessor,
     config: ClassifierConfig,
 }
+
+impl<T: ClassificationBackend + ?Sized> ClassificationBackend
+    for std::sync::Arc<T>
+{
+    fn predict(
+        &self,
+        image: &ProcessedImage,
+    ) -> Result<Vec<f32>> {
+        (**self).predict(image)
+    }
+}
+
 
 impl<B: ClassificationBackend> Classifier<B> {
 

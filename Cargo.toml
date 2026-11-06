@@ -21,3 +21,4 @@ image = {
     default-features = false,
     features = ["jpeg", "png", "webp"]
 }
+base64 = "0.22"

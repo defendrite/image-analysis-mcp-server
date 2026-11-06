@@ -1,2 +1,2 @@
-mod image_processor;
-mod classifier;
+pub mod image_processor;
+pub mod classifier;

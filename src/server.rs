@@ -1,33 +1,97 @@
-use axum::{Json, Router, routing::get};
+
+use axum::{
+    Json,
+    Router,
+    routing::get,
+};
 
 use rmcp::{
     handler::server::wrapper::Parameters,
-    tool, tool_router,
+    tool,
+    tool_router,
     transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+        StreamableHttpServerConfig,
+        StreamableHttpService,
+        session::local::LocalSessionManager,
     },
 };
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use std::sync::Arc;
+
+use crate::processors::classifier::ClassificationBackend;
+
+use crate::tools::classification::{
+    ClassificationParams,
+    ClassificationTool,
+};
+
 // ==========================================
 // MCP SERVER
 // ==========================================
 
 #[derive(Clone)]
-pub struct ImageAnalysisServer;
+pub struct ImageAnalysisServer {
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct HelloParams {
-    pub name: String,
+    // Shared inference backend.
+    // None until an inference engine is initialized.
+    backend: Option<Arc<dyn ClassificationBackend>>,
+
+    // Model class labels.
+    labels: Vec<String>,
 }
+
+// ==========================================
+// SERVER INITIALIZATION
+// ==========================================
+
+impl ImageAnalysisServer {
+
+    pub fn new() -> Self {
+        Self {
+            backend: None,
+            labels: Vec::new(),
+        }
+    }
+
+    // Configure inference backend later.
+    pub fn with_backend(
+        mut self,
+        backend: Arc<dyn ClassificationBackend>,
+        labels: Vec<String>,
+    ) -> Self {
+        self.backend = Some(backend);
+        self.labels = labels;
+
+        self
+    }
+}
+
+// ==========================================
+// MCP TOOL REGISTRATION
+// ==========================================
 
 #[tool_router(server_handler)]
 impl ImageAnalysisServer {
-    #[tool(description = "Say hello to a user")]
-    fn say_hello(&self, Parameters(HelloParams { name }): Parameters<HelloParams>) -> String {
-        format!("Hello, {}! Welcome to Image Analysis MCP Server.", name)
+
+    #[tool(
+        description = "Classify an image using the configured image classification model. Accepts a Base64-encoded JPEG, PNG or WebP image and returns the top three predictions with probabilities."
+    )]
+    fn classify_image(
+        &self,
+        Parameters(params): Parameters<ClassificationParams>,
+    ) -> Result<String, String> {
+
+        let response = ClassificationTool::classify(
+            &params.image_base64,
+            self.backend.as_ref(),
+            &self.labels,
+        )?;
+
+        serde_json::to_string_pretty(&response)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -82,40 +146,42 @@ async fn root() -> Json<ServerInfo> {
 }
 
 // ==========================================
-// SERVER INITIALIZATION
+// SERVER RUNNER
 // ==========================================
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // Configure MCP service
+
+    // Create MCP server
     let mcp_service = StreamableHttpService::new(
-        || Ok(ImageAnalysisServer),
+        || Ok(ImageAnalysisServer::new()),
         LocalSessionManager::default().into(),
         StreamableHttpServerConfig::default(),
     );
 
-    // Configure Axum routes
+    // Configure Axum
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
         .nest_service("/mcp", mcp_service);
 
-    // Read port from environment
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    // Configure port
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "8080".to_string());
 
     let address = format!("0.0.0.0:{}", port);
 
-    // Bind TCP listener
+    // Start HTTP listener
     let listener = tokio::net::TcpListener::bind(&address).await?;
 
     println!("========================================");
     println!(" Image Analysis MCP Server");
     println!("========================================");
-    println!(" Server:  http://localhost:{}", port);
-    println!(" Health:  http://localhost:{}/health", port);
-    println!(" MCP:     http://localhost:{}/mcp", port);
+    println!(" Server:       http://localhost:{}", port);
+    println!(" Health:       http://localhost:{}/health", port);
+    println!(" MCP:          http://localhost:{}/mcp", port);
+    println!(" MCP Tools:    classify_image");
     println!("========================================");
 
-    // Start server
     axum::serve(listener, app).await?;
 
     Ok(())

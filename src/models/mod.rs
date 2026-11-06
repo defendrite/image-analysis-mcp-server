@@ -1,2 +1,2 @@
-mod model_config; 
-mod model_manager;
+pub mod model_config; 
+pub mod model_manager;
