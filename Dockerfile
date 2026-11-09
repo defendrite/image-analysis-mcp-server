@@ -1,4 +1,3 @@
-
 # Build stage
 FROM rust:1-trixie AS builder
 
@@ -29,8 +28,15 @@ WORKDIR /app
 COPY --from=builder /app/target/release/image-analysis-mcp-server \
     /usr/local/bin/image-analysis-mcp-server
 
-RUN useradd --create-home appuser
+# 1. Create the user
+RUN useradd --create-home defendrite
 
-USER appuser
+# 2. ADD THIS: Pre-create the Hugging Face cache directory and give defendrite ownership
+RUN mkdir -p /home/defendrite/.cache/huggingface && chown -R defendrite:defendrite /home/defendrite/.cache
+
+# 3. ADD THIS: Set the environment variable so Rust frameworks know where to write
+ENV HF_HOME=/home/defendrite/.cache/huggingface
+
+USER defendrite
 
 ENTRYPOINT ["image-analysis-mcp-server"]
