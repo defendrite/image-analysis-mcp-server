@@ -18,3 +18,4 @@ rustc-ice-*.txt
 /target
 
 .env
+models_cache
