@@ -1,22 +1,13 @@
-
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-
-// ==========================================
-// MODEL FORMAT
-// ==========================================
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelFormat {
-    PyTorch,
     ONNX,
+    PyTorch,
     SafeTensors,
     Custom,
 }
-
-// ==========================================
-// DEVICE PREFERENCE
-// ==========================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DevicePreference {
@@ -25,33 +16,14 @@ pub enum DevicePreference {
     CUDA,
 }
 
-// ==========================================
-// MODEL CONFIGURATION
-// ==========================================
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
-    // Unique model identifier used by our application
     pub name: String,
-
-    // Hugging Face repository
-    // Example: organization/model-name
     pub repo_id: String,
-
-    // Hugging Face branch, tag or commit
     pub revision: String,
-
-    // Model format
     pub format: ModelFormat,
-
-    // Files to download from Hugging Face
-    // Example: model.onnx, config.json
     pub files: Vec<String>,
-
-    // Local model cache directory
     pub cache_dir: Option<PathBuf>,
-
-    // Preferred inference device
     pub device: DevicePreference,
 }
 
@@ -65,7 +37,7 @@ impl ModelConfig {
         Self {
             name: name.into(),
             repo_id: repo_id.into(),
-            revision: "main".to_string(),
+            revision: "main".into(),
             format,
             files,
             cache_dir: None,
@@ -78,10 +50,10 @@ impl ModelConfig {
         self
     }
 
-    pub fn with_cache_dir(mut self, path: PathBuf) -> Self {
-        self.cache_dir = Some(path);
-        self
-    }
+    // pub fn with_cache_dir(mut self, path: impl Into<PathBuf>) -> Self {
+    //     self.cache_dir = Some(path.into());
+    //     self
+    // }
 
     pub fn with_device(mut self, device: DevicePreference) -> Self {
         self.device = device;
@@ -90,38 +62,14 @@ impl ModelConfig {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
-            return Err("Model name cannot be empty".to_string());
+            return Err("Model name cannot be empty".into());
         }
 
-        // Expect organization/model or user/model
-        let repo_parts: Vec<&str> = self.repo_id.split('/').collect();
-
-        if repo_parts.len() != 2
-            || repo_parts.iter().any(|part| {
-                part.is_empty()
-                    || !part.chars().all(|c| {
-                        c.is_ascii_alphanumeric()
-                            || c == '-'
-                            || c == '_'
-                            || c == '.'
-                    })
-                    || *part == "."
-                    || *part == ".."
-            })
-        {
-            return Err("Invalid Hugging Face repository ID".to_string());
-        }
-
-        if self.revision.trim().is_empty()
-            || self.revision.split('/').any(|part| {
-                part.is_empty() || part == "." || part == ".."
-            })
-        {
-            return Err("Invalid model revision".to_string());
-        }
+        validate_repo_id(&self.repo_id)?;
+        validate_revision(&self.revision)?;
 
         if self.files.is_empty() {
-            return Err("At least one model file is required".to_string());
+            return Err("At least one model file is required".into());
         }
 
         for file in &self.files {
@@ -132,22 +80,46 @@ impl ModelConfig {
     }
 }
 
-// ==========================================
-// PATH VALIDATION
-// ==========================================
+fn validate_repo_id(repo_id: &str) -> Result<(), String> {
+    let parts: Vec<&str> = repo_id.split('/').collect();
 
-fn validate_relative_path(path: &str) -> Result<(), String> {
-    let path = std::path::Path::new(path);
-
-    if path.as_os_str().is_empty() || path.is_absolute() {
-        return Err("Invalid model file path".to_string());
+    if parts.len() != 2
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || !part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+                || *part == "."
+                || *part == ".."
+        })
+    {
+        return Err("Invalid Hugging Face repository ID".into());
     }
 
-    for component in path.components() {
-        match component {
-            std::path::Component::Normal(_) => {}
-            _ => return Err("Invalid model file path".to_string()),
-        }
+    Ok(())
+}
+
+fn validate_revision(revision: &str) -> Result<(), String> {
+    if revision.trim().is_empty()
+        || revision
+            .split('/')
+            .any(|part| part.is_empty() || matches!(part, "." | ".."))
+    {
+        return Err("Invalid model revision".into());
+    }
+
+    Ok(())
+}
+
+fn validate_relative_path(path: &str) -> Result<(), String> {
+    let path = Path::new(path);
+
+    if path.as_os_str().is_empty()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("Invalid model file path".into());
     }
 
     Ok(())

@@ -1,11 +1,10 @@
-mod server;
+mod app;
+mod inference;
+mod mcp;
 mod models;
-mod processors;
 mod tools;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    server::run().await?;
-
-    Ok(())
+    app::bootstrap::run().await
 }

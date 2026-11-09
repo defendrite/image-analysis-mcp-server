@@ -27,3 +27,4 @@ image = {
 }
 base64 = "0.22"
 ort = { version = "=2.0.0-rc.15", features = ["download-binaries"] }
+url = "2.5.8"
