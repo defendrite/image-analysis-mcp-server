@@ -99,7 +99,10 @@ impl ModelManager {
             .user_agent("image-analysis-mcp-server/0.1.0")
             .build()?;
 
-        let default_cache_dir = PathBuf::from("models_cache");
+        // let default_cache_dir = PathBuf::from("models_cache");
+        let default_cache_dir = std::env::var("MODEL_CACHE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("models_cache"));
 
         Ok(Self {
             client,
